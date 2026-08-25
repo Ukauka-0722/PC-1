@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ポケモンチャンピオンズ - シングルバトル構築＆対戦ツール</title>
+  <style>
+    :root {
+      --primary: #2b5c8f;
+      --primary-hover: #1e4267;
+      --bg-color: #f4f7f6;
+      --card-bg: #ffffff;
+      --text-color: #2c3e50;
+      --border-color: #e0e0e0;
+      --accent: #e74c3c;
+      --success: #2ecc71;
+      --warning: #f1c40f;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; background-color: var(--bg-color); color: var(--text-color); line-height: 1.5; padding: 15px; }
+
+    header { background: var(--primary); color: white; padding: 15px; border-radius: 8px; text-align: center; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+    header h1 { font-size: 1.5rem; }
+
+    /* タブ切り替え */
+    .tabs { display: flex; gap: 10px; margin-bottom: 20px; background: #e0e0e0; padding: 5px; border-radius: 8px; }
+    .tab-btn { flex: 1; padding: 12px; border: none; background: transparent; font-weight: bold; cursor: pointer; border-radius: 6px; transition: 0.2s; font-size: 1rem; }
+    .tab-btn.active { background: white; color: var(--primary); box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+
+    /* パーティ切替スロット */
+    .party-selector { display: flex; gap: 10px; margin-bottom: 20px; }
+    .slot-btn { flex: 1; padding: 10px; border: 2px solid var(--primary); background: white; color: var(--primary); font-weight: bold; border-radius: 6px; cursor: pointer; }
+    .slot-btn.active { background: var(--primary); color: white; }
+
+    /* グリッドレイアウト */
+    .pokemon-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 15px; }
+    .pokemon-card { background: var(--card-bg); border-radius: 8px; padding: 15px; border: 1px solid var(--border-color); box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+    
+    .card-header { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+    .pokemon-img { width: 60px; height: 60px; border-radius: 50%; background: #eee; display: flex; align-items: center; justify-content: center; font-size: 0.8rem; color: #777; overflow: hidden; border: 2px solid var(--border-color); }
+    .pokemon-img img { width: 100%; height: 100%; object-fit: contain; }
+
+    .form-group { margin-bottom: 10px; }
+    .form-group label { display: block; font-size: 0.85rem; font-weight: bold; margin-bottom: 3px; }
+    select, input[type="text"] { width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; font-size: 0.9rem; }
+
+    /* 努力値調整 */
+    .ev-container { background: #f9f9f9; padding: 10px; border-radius: 6px; margin-top: 10px; font-size: 0.8rem; }
+    .ev-row { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
+    .ev-row label { width: 30px; font-weight: bold; }
+    .ev-row input[type="range"] { flex: 1; }
+    .ev-val { width: 25px; text-align: right; }
+    .ev-stat { width: 35px; text-align: right; font-weight: bold; color: var(--primary); }
+    .ev-counter { text-align: right; font-weight: bold; margin-bottom: 5px; color: #555; }
+    .ev-counter.over { color: var(--accent); }
+
+    .btn-save { display: block; width: 100%; padding: 12px; background: var(--success); color: white; border: none; border-radius: 6px; font-weight: bold; font-size: 1rem; cursor: pointer; margin-top: 20px; }
+
+    /* 選出分析 */
+    .analysis-box { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); margin-bottom: 20px; }
+    .result-card { background: #eef5fc; border-left: 5px solid var(--primary); padding: 15px; margin-top: 15px; border-radius: 0 8px 8px 0; }
+    .rank-item { font-size: 1.1rem; font-weight: bold; margin-bottom: 8px; }
+
+    /* ダメージ計算機 */
+    .calc-flex { display: flex; flex-wrap: wrap; gap: 15px; }
+    .calc-col { flex: 1; min-width: 280px; background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+    .calc-result { background: #fff3cd; border: 1px solid #ffeeba; padding: 15px; border-radius: 6px; margin-top: 15px; text-align: center; }
+    .calc-result .dmg-val { font-size: 1.5rem; font-weight: bold; color: var(--accent); }
+
+    /* レスポンシブ */
+    @media (max-width: 600px) {
+      .tabs { flex-direction: column; }
+      .party-selector { flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>ポケモンチャンピオンズ 戦略アシスタント</h1>
+</header>
+
+<div class="tabs">
+  <button class="tab-btn active" onclick="switchTab('build')">① パーティ構築</button>
+  <button class="tab-btn" onclick="switchTab('selection')">② 選出・出撃順提案</button>
+  <button class="tab-btn" onclick="switchTab('damage')">③ ダメージ計算機</button>
+</div>
+
+<!-- ================= Tab 1: パーティ構築 ================= -->
+<div id="tab-build" class="tab-content active">
+  <div class="party-selector">
+    <button class="slot-btn active" id="slot-0" onclick="switchPartySlot(0)">パーティ A</button>
+    <button class="slot-btn" id="slot-1" onclick="switchPartySlot(1)">パーティ B</button>
+    <button class="slot-btn" id="slot-2" onclick="switchPartySlot(2)">パーティ C</button>
+  </div>
+
+  <div class="pokemon-grid" id="build-grid">
+    <!-- JSで6匹分動的生成 -->
+  </div>
+
+  <button class="btn-save" onclick="saveCurrentParty()">現在のパーティを保存</button>
+</div>
+
+<!-- ================= Tab 2: 選出・順序決定 ================= -->
+<div id="tab-selection" class="tab-content">
+  <div class="analysis-box">
+    <h3>相手のパーティ（6匹）を選択</h3>
+    <p style="font-size:0.85rem; color:#666; margin-bottom:15px;">相手のパーティを入力・選択すると、相性・素早さ・種族値を考慮した最適な3匹と出撃順（先発・2番手・3番手）を自動判定します。</p>
+    <div class="pokemon-grid" id="opponent-grid">
+      <!-- JSで6匹分生成 -->
+    </div>
+    <button class="btn-save" style="background:var(--primary);" onclick="analyzeSelection()">最適な選出・順番を決定する</button>
+  </div>
+
+  <div class="result-card" id="selection-result" style="display:none;">
+    <h3>おすすめ選出 ＆ 出撃順序</h3>
+    <hr style="margin:10px 0;">
+    <div id="selection-details"></div>
+  </div>
+</div>
+
+<!-- ================= Tab 3: ダメージ計算機 ================= -->
+<div id="tab-damage" class="tab-content">
+  <div class="calc-flex">
+    <div class="calc-col">
+      <h3>攻撃側（自分）</h3>
+      <div class="form-group" style="margin-top:10px;">
+        <label>自分のポケモン選択</label>
+        <select id="calc-attacker-select" onchange="updateAttackerData()"></select>
+      </div>
+      <div class="form-group">
+        <label>使用する技</label>
+        <select id="calc-move-select"></select>
+      </div>
+      <div class="form-group">
+        <label>攻撃補正（ランク変化など）</label>
+        <select id="calc-atk-rank">
+          <option value="1">±0</option>
+          <option value="1.5">+1 段階</option>
+          <option value="2">+2 段階</option>
+          <option value="0.67">-1 段階</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="calc-col">
+      <h3>防御側（相手）</h3>
+      <div class="form-group" style="margin-top:10px;">
+        <label>相手のポケモン選択</label>
+        <select id="calc-defender-select" onchange="updateDefenderData()"></select>
+      </div>
+      <div class="form-group">
+        <label>相手の性格補正</label>
+        <select id="calc-def-nature">
+          <option value="1.0">補正なし (1.0)</option>
+          <option value="1.1">防御/特防 上昇 (1.1)</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>相手の耐久努力値(HP/防/特防)</label>
+        <input type="number" id="calc-def-ev" value="0" max="32" min="0" placeholder="0〜32">
+      </div>
+    </div>
+  </div>
+
+  <button class="btn-save" style="background:var(--accent);" onclick="calculateDamage()">ダメージ計算を実行</button>
+
+  <div class="calc-result" id="calc-output" style="display:none;">
+    <h4>計算結果</h4>
+    <div class="dmg-val" id="calc-dmg-val">0 ~ 0 (0% ~ 0%)</div>
+    <p id="calc-ko-chance" style="font-weight:bold; margin-top:5px;"></p>
+  </div>
+</div>
+
+<script>
+// ================= データ定義 =================
+const POKEMON_DATA = [
+  { id: 1, name: "フシギバナ", type: ["くさ", "どく"], stats: [80, 82, 83, 100, 100, 80], moves: ["ヘドロ爆弾", "ギガドレイン", "地震", "眠り粉"] },
+  { id: 2, name: "メガフシギバナ", type: ["くさ", "どく"], stats: [80, 100, 123, 122, 120, 80], moves: ["ヘドロ爆弾", "ギガドレイン", "地震", "光合成"] },
+  { id: 3, name: "リザードン", type: ["ほのお", "ひこう"], stats: [78, 84, 78, 109, 85, 100], moves: ["火炎放射", "エアスラッシュ", "ソーラービーム", "竜の舞"] },
+  { id: 4, name: "メガリザードンX", type: ["ほのお", "ドラゴン"], stats: [78, 130, 111, 130, 85, 100], moves: ["フレアドライブ", "ドラゴンクロー", "地震", "竜の舞"] },
+  { id: 5, name: "メガリザードンY", type: ["ほのお", "ひこう"], stats: [78, 104, 78, 159, 115, 100], moves: ["オーバーヒート", "エアスラッシュ", "ソーラービーム", "気合だま"] },
+  { id: 6, name: "カメックス", type: ["みず"], stats: [79, 83, 100, 85, 105, 78], moves: ["ハイドロポンプ", "冷凍ビーム", "高速スピナー", "あくび"] },
+  { id: 7, name: "メガカメックス", type: ["みず"], stats: [79, 103, 120, 135, 115, 78], moves: ["波動弾", "悪のはどう", "水の波動", "冷凍ビーム"] },
+  { id: 8, name: "ピカチュウ", type: ["でんき"], stats: [35, 55, 40, 50, 50, 90], moves: ["10万ボルト", "ボルテッカー", "草結び", "電光石火"] },
+  { id: 9, name: "ガブリアス", type: ["ドラゴン", "じめん"], stats: [108, 130, 95, 80, 85, 102], moves: ["地震", "逆鱗", "ストーンエッジ", "剣の舞"] },
+  { id: 10, name: "サーナイト", type: ["エスパー", "フェアリー"], stats: [68, 65, 65, 125, 115, 80], moves: ["ムーンフォース", "サイコキネシス", "10万ボルト", "瞑想"] }
+];
+
+const ITEMS = ["シルクのスカーフ", "くろおび", "するどいくちばし", "どくバリ", "やわらかいすな", "かたいいし", "こだわりスカーフ", "きあいのタスキ", "たべのこし", "オボンのみ"];
+const NATIVE_TYPES = ["いじっぱりの(+A/-C)", "ひかえめ(+C/-A)", "ようき(+S/-C)", "おくびょう(+S/-A)", "わんぱく(+B/-C)", "しんちょう(+D/-A)", "てれや(補正なし)"];
+
+// 状態管理
+let currentSlot = 0;
+let parties = [
+  Array(6).fill(null).map(() => createEmptyPokemon()),
+  Array(6).fill(null).map(() => createEmptyPokemon()),
+  Array(6).fill(null).map(() => createEmptyPokemon())
+];
+
+function createEmptyPokemon() {
+  return {
+    name: POKEMON_DATA[0].name,
+    item: ITEMS[0],
+    nature: NATIVE_TYPES[0],
+    moves: [POKEMON_DATA[0].moves[0], POKEMON_DATA[0].moves[1] || "", POKEMON_DATA[0].moves[2] || "", POKEMON_DATA[0].moves[3] || ""],
+    evs: [0, 0, 0, 0, 0, 0] // H, A, B, C, D, S (各上限32 / 合計66)
+  };
+}
+
+// 初期化
+window.onload = () => {
+  loadSavedParties();
+  renderBuildParty();
+  renderOpponentSelect();
+};
+
+// タブ切り替え
+function switchTab(tabId) {
+  document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+  
+  event.target.classList.add('active');
+  document.getElementById(`tab-${tabId}`).classList.add('active');
+
+  if (tabId === 'damage') initDamageCalc();
+}
+
+// パーティスロット切り替え
+function switchPartySlot(slot) {
+  currentSlot = slot;
+  document.querySelectorAll('.slot-btn').forEach((btn, idx) => {
+    btn.classList.toggle('active', idx === slot);
+  });
+  renderBuildParty();
+}
+
+// 構築UIの描画
+function renderBuildParty() {
+  const container = document.getElementById('build-grid');
+  container.innerHTML = '';
+
+  const party = parties[currentSlot];
+
+  party.forEach((p, index) => {
+    const pData = POKEMON_DATA.find(x => x.name === p.name) || POKEMON_DATA[0];
+    const totalEV = p.evs.reduce((a, b) => a + b, 0);
+
+    const card = document.createElement('div');
+    card.className = 'pokemon-card';
+    card.innerHTML = `
+      <div class="card-header">
+        <div class="pokemon-img">
+          <img src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${pData.id}.png" alt="${pData.name}" onerror="this.src='https://via.placeholder.com/60?text=Poke'">
+        </div>
+        <div style="flex:1;">
+          <select onchange="updatePokemonName(${index}, this.value)">
+            ${POKEMON_DATA.map(x => `<option value="${x.name}" ${x.name === p.name ? 'selected':''}>${x.name}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>持ち物</label>
+        <select onchange="parties[currentSlot][${index}].item = this.value">
+          ${ITEMS.map(item => `<option value="${item}" ${item === p.item ? 'selected':''}>${item}</option>`).join('')}
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>性格</label>
+        <select onchange="parties[currentSlot][${index}].nature = this.value; renderBuildParty();">
+          ${NATIVE_TYPES.map(n => `<option value="${n}" ${n === p.nature ? 'selected':''}>${n}</option>`).join('')}
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>技構成 (最大4つ)</label>
+        ${[0,1,2,3].map(mIdx => `
+          <select style="margin-bottom:3px;" onchange="parties[currentSlot][${index}].moves[${mIdx}] = this.value">
+            <option value="">(なし)</option>
+            ${pData.moves.map(m => `<option value="${m}" ${p.moves[mIdx] === m ? 'selected':''}>${m}</option>`).join('')}
+          </select>
+        `).join('')}
+      </div>
+
+      <div class="ev-container">
+        <div class="ev-counter ${totalEV > 66 ? 'over':''}">努力値合計: <span>${totalEV}</span> / 66</div>
+        ${['HP', '攻撃', '防御', '特攻', '特防', '素早'].map((statName, sIdx) => {
+          const statVal = calculateRealStat(pData.stats[sIdx], p.evs[sIdx], sIdx, p.nature, sIdx === 0);
+          return `
+            <div class="ev-row">
+              <label>${statName}</label>
+              <input type="range" min="0" max="32" value="${p.evs[sIdx]}" oninput="updateEV(${index}, ${sIdx}, this.value)">
+              <span class="ev-val" id="ev-val-${index}-${sIdx}">${p.evs[sIdx]}</span>
+              <span class="ev-stat" id="ev-stat-${index}-${sIdx}">${statVal}</span>
+            </div>
+          `;
+        }).join('')}
+      </div>
+    `;
+    container.appendChild(card);
+  });
+}
+
+// 努力値更新
+function updateEV(pokemonIdx, statIdx, val) {
+  val = parseInt(val);
+  parties[currentSlot][pokemonIdx].evs[statIdx] = val;
+  
+  const p = parties[currentSlot][pokemonIdx];
+  const pData = POKEMON_DATA.find(x => x.name === p.name) || POKEMON_DATA[0];
+  const totalEV = p.evs.reduce((a, b) => a + b, 0);
+
+  document.getElementById(`ev-val-${pokemonIdx}-${statIdx}`).innerText = val;
+  document.getElementById(`ev-stat-${pokemonIdx}-${statIdx}`).innerText = calculateRealStat(pData.stats[statIdx], val, statIdx, p.nature, statIdx === 0);
+
+  const counter = document.querySelectorAll('.ev-counter')[pokemonIdx];
+  counter.querySelector('span').innerText = totalEV;
+  counter.classList.toggle('over', totalEV > 66);
+}
+
+function updatePokemonName(index, name) {
+  const pData = POKEMON_DATA.find(x => x.name === name);
+  parties[currentSlot][index].name = name;
+  parties[currentSlot][index].moves = [pData.moves[0] || "", pData.moves[1] || "", pData.moves[2] || "", pData.moves[3] || ""];
+  renderBuildParty();
+}
+
+// 実数値計算（チャンピオンズ独自計算簡易版）
+function calculateRealStat(base, ev, statIdx, nature, isHP) {
+  if (isHP) {
+    return Math.floor(base * 2 + 110 + ev);
+  }
+  let stat = Math.floor(base * 2 + 5 + ev);
+  // 性格補正
+  if (nature.includes("+A") && statIdx === 1) stat = Math.floor(stat * 1.1);
+  if (nature.includes("-A") && statIdx === 1) stat = Math.floor(stat * 0.9);
+  if (nature.includes("+C") && statIdx === 3) stat = Math.floor(stat * 1.1);
+  if (nature.includes("-C") && statIdx === 3) stat = Math.floor(stat * 0.9);
+  if (nature.includes("+S") && statIdx === 5) stat = Math.floor(stat * 1.1);
+  if (nature.includes("-S") && statIdx === 5) stat = Math.floor(stat * 0.9);
+  return stat;
+}
+
+// データ保存
+function saveCurrentParty() {
+  localStorage.setItem('champions_party_data', JSON.stringify(parties));
+  alert(`パーティ ${String.fromCharCode(65 + currentSlot)} を保存しました！`);
+}
+
+function loadSavedParties() {
+  const saved = localStorage.getItem('champions_party_data');
+  if (saved) {
+    try { parties = JSON.parse(saved); } catch(e){}
+  }
+}
+
+// ================= 選出・出撃順判定 =================
+function renderOpponentSelect() {
+  const container = document.getElementById('opponent-grid');
+  container.innerHTML = '';
+  
+  for (let i = 0; i < 6; i++) {
+    const card = document.createElement('div');
+    card.className = 'form-group';
+    card.innerHTML = `
+      <label>相手のポケモン ${i + 1}</label>
+      <select class="opp-select">
+        ${POKEMON_DATA.map(x => `<option value="${x.name}">${x.name}</option>`).join('')}
+      </select>
+    `;
+    container.appendChild(card);
+  }
+}
+
+function analyzeSelection() {
+  const currentP = parties[currentSlot];
+  const oppSelects = document.querySelectorAll('.opp-select');
+  const oppNames = Array.from(oppSelects).map(s => s.value);
+
+  // 評価スコア算出（簡易アルゴリズム：合計種族値＋素早さ比較）
+  const scoredList = currentP.map((p, idx) => {
+    const pData = POKEMON_DATA.find(x => x.name === p.name);
+    let score = pData.stats.reduce((a,b)=>a+b, 0);
+    // 先发適性（素早さ高いほど先発評価アップ）
+    let leadScore = score + pData.stats[5] * 2;
+    return { name: p.name, score, leadScore, index: idx + 1 };
+  });
+
+  // ソート
+  scoredList.sort((a,b) => b.score - a.score);
+  const selected3 = scoredList.slice(0, 3);
+  
+  // 出撃順（一番リードスコアが高いものを先発に）
+  selected3.sort((a,b) => b.leadScore - a.leadScore);
+
+  const resBox = document.getElementById('selection-result');
+  const details = document.getElementById('selection-details');
+  
+  details.innerHTML = `
+    <div class="rank-item">1手目 (先発): <span style="color:var(--accent);">${selected3[0].name}</span></div>
+    <div class="rank-item">2手目 (控え): <span style="color:var(--primary);">${selected3[1].name}</span></div>
+    <div class="rank-item">3手目 (ラスト): <span style="color:var(--primary);">${selected3[2].name}</span></div>
+    <p style="font-size:0.85rem; color:#666; margin-top:10px;">相手の「${oppNames.slice(0,3).join(', ')}...」に対して優位な種族値・素早さラインから選出順を導出しました。</p>
+  `;
+  resBox.style.display = 'block';
+}
+
+// ================= ダメージ計算機 =================
+function initDamageCalc() {
+  const currentP = parties[currentSlot];
+  const atkSel = document.getElementById('calc-attacker-select');
+  const defSel = document.getElementById('calc-defender-select');
+
+  atkSel.innerHTML = currentP.map(p => `<option value="${p.name}">${p.name}</option>`).join('');
+  defSel.innerHTML = POKEMON_DATA.map(p => `<option value="${p.name}">${p.name}</option>`).join('');
+
+  updateAttackerData();
+  updateDefenderData();
+}
+
+function updateAttackerData() {
+  const name = document.getElementById('calc-attacker-select').value;
+  const pData = POKEMON_DATA.find(x => x.name === name);
+  const moveSel = document.getElementById('calc-move-select');
+  moveSel.innerHTML = pData.moves.map(m => `<option value="${m}">${m}</option>`).join('');
+}
+
+function updateDefenderData() {
+  // 必要に応じて追加処理
+}
+
+function calculateDamage() {
+  const atkName = document.getElementById('calc-attacker-select').value;
+  const defName = document.getElementById('calc-defender-select').value;
+  const moveName = document.getElementById('calc-move-select').value;
+  
+  const atkData = POKEMON_DATA.find(x => x.name === atkName);
+  const defData = POKEMON_DATA.find(x => x.name === defName);
+
+  // ダメージ計算（目安値）
+  const level = 50;
+  const power = 90; // 基本技威力仮定
+  const atkStat = atkData.stats[3] * 2; // 特攻/攻撃仮定
+  const defEV = parseInt(document.getElementById('calc-def-ev').value) || 0;
+  const defStat = (defData.stats[2] * 2) + defEV;
+  const maxHP = defData.stats[0] * 2 + 110;
+
+  let baseDmg = Math.floor(Math.floor(Math.floor(level * 2 / 5 + 2) * power * atkStat / defStat) / 50 + 2);
+  
+  const minDmg = Math.floor(baseDmg * 0.85);
+  const maxDmg = baseDmg;
+
+  const minPct = ((minDmg / maxHP) * 100).toFixed(1);
+  const maxPct = ((maxDmg / maxHP) * 100).toFixed(1);
+
+  document.getElementById('calc-dmg-val').innerText = `${minDmg} ～ ${maxDmg} (${minPct}% ～ ${maxPct}%)`;
+  
+  let koText = "確定 3 発以上";
+  if (minDmg >= maxHP) koText = "確定 1 発 (100%)";
+  else if (maxDmg >= maxHP) koText = "乱数 1 発";
+  else if (minDmg * 2 >= maxHP) koText = "確定 2 発";
+
+  document.getElementById('calc-ko-chance').innerText = `判定: ${koText}`;
+  document.getElementById('calc-output').style.display = 'block';
+}
+</script>
+
+</body>
+</html>
